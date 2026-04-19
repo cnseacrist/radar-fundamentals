@@ -27,9 +27,30 @@ def linear_to_db(value_linear):
     return 10 * np.log10(value_linear)
 
 #----------------------------------------
+# Atmospheric Attentuation (simplified ITU-R P.676)
+#----------------------------------------
+def atmospheric_loss_dB(range_m, alpha_dB_per_km=0.012):
+    """
+    Compute two-way atmostpheric attenuation in dB.
+
+    Parameters
+    ----------
+    range_m          : Range to target in meters
+    alpha_dB_per_km  : One way specific attenuation in [dB/km]
+                       (default 0.012 dB/km for X-band)
+
+    Returns
+    -------
+    loss_dB          : Two-way atmospheric loss in dB
+    """
+    range_km = range_m / 1000.0
+    loss_dB = 2.0 * alpha_dB_per_km * range_km
+    return loss_dB
+
+#---------------------------------------
 # SNR calculation
 #----------------------------------------
-def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB):
+def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=None):
     """
     Compute single-pule SNR in dB.
 
@@ -43,6 +64,7 @@ def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB)
     NF_dB     : Receiver noise figure [dB]
     Bn_Hz     : Noise bandwidth [Hz]
     L_sys_dB  : Total system losses [dB]
+    alpha_dB_per_km : One way specific attenuation in [dB/km]
 
     Returns
     -------
@@ -62,10 +84,17 @@ def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB)
     # which is reasonable for a ground-based detector looking at the horizon.
     T_sys = T_0 * NF_linear
 
+    # Step 4: Atmospheric loss (if enabled)
+    if alpha_dB_per_km is not None:
+        L_atm_dB = atmospheric_loss_dB(range_m, alpha_dB_per_km)
+        L_atm_linear = db_to_linear(L_atm_dB)
+    else:
+        L_atm_linear = 1.0  # No atmospheric loss
+
     # Step 4: Build the radar range equation
     numerator = Pt_W * G_linear**2 * wavelength_m**2 * sigma_m2
 
-    denominator = (4 * np.pi)**3 * range_m**4 * K_BOLTZMANN * T_sys * Bn_Hz * L_sys_linear
+    denominator = (4 * np.pi)**3 * range_m**4 * K_BOLTZMANN * T_sys * Bn_Hz * L_sys_linear * L_atm_linear
 
     snr_linear = numerator / denominator
     snr_db = linear_to_db(snr_linear)
@@ -75,7 +104,7 @@ def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB)
 #----------------------------------------
 # Max Detection Range Finder
 #----------------------------------------  
-def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0, max_search_m=50000, step_m=1.0):
+def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0, max_search_m=50000, step_m=1.0, alpha_dB_per_km=None):
     
     """
     Sweep through ranges and find where SNR drops below the detection threshold.
@@ -86,7 +115,7 @@ def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_m
     ranges = np.arange(100, max_search_m, step_m)
 
     for R in ranges:
-        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, R, NF_dB, Bn_Hz, L_sys_dB)
+        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, R, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=alpha_dB_per_km)
         if snr < SNR_min_dB:
             return R - step_m # Return the last range where it was detectable
 
@@ -107,6 +136,9 @@ def main():
     L_sys_dB = 6.0    # 6 dB system losses
     SNR_min_dB = 13.0 # Minimum SNR for detection
 
+    # Atmospheric parameter
+    alpha = 0.012 # dB/km, clear X-band
+
     # === print system summary ===
     wavelength_m = c / freq_Hz
 
@@ -121,23 +153,29 @@ def main():
     print(f"  Noise Bandwidth:  {Bn_Hz / 1e6} MHz")
     print(f"  System Losses:    {L_sys_dB} dB")
     print(f"  Detection Thresh: {SNR_min_dB} dB")
+    print(f"  Atm Attenuation:  {alpha} dB/km (one-way)")
     print("=" * 55)
 
-    # === Compute SNR at a specific range (sanity check) ===
-    test_range = 2000  # 2 km
-    test_rcs = 0.1     # 0.1 m^2
-    snr = compute_snr(Pt_W, G_dBi, freq_Hz, test_rcs, test_range, NF_dB, Bn_Hz, L_sys_dB)
-    print(f"\nSanity check: SNR at {test_range}m for σ={test_rcs} m² = {snr:.1f} dB")
 
     # === Max detection range for several RCS values ===
     rcs_values = [0.001, 0.01, 0.1, 1.0]
 
-    print(f"\n{'RCS [m²]':>12}  {'Max Detection Range':>22}")
-    print("-" * 38)
+    print(f"\n{'RCS [m²]':>12}  {'Free-space':>18}  {'With atm.':>16}  {'Range lost':>14}")
+    print("-" * 66)
 
     for sigma in rcs_values:
-        r_max = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB)
-        print(f"  {sigma:>10.3f}    {r_max / 1000:>18.2f} km")
+        r_free = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=None)
+        r_atm = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha)
+        lost = r_free - r_atm
+        print(f"  {sigma:>10.3f}    {r_free / 1000:>12.2f} km    {r_atm / 1000:>12.2f} km    {lost:>10.0f} m")
+
+    # === Show atmospheric loss at key ranges ===
+    print(f"\nAtmospheric Loss at Key Ranges (alpha={alpha} dB/km):")
+    print(f"  {'Range':>10}  {'Two-way loss':>14}")
+    print(f"  {'-'*10}  {'-'*14}")
+    for r_km in [1, 2, 5, 10, 20]:
+        loss = atmospheric_loss_dB(r_km * 1000, alpha)
+        print(f"  {r_km:>8} km {loss:>12.3f} dB")
 
     print()
 
