@@ -7,6 +7,7 @@ Author: Charles Seacrist
 """
 
 import numpy as np
+import matplotlib.pyplot as pyplot
 
 #----------------------------------------
 # Physical Constants
@@ -121,6 +122,55 @@ def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_m
 
     return max_search_m # If we exhaust the search range, return the max search range as the limit
 
+#----------------------------------------
+# Plot
+#----------------------------------------
+def plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0, alpha_dB_per_km=None, max_range_km=20.0):
+    """
+    Plot SNR vs. range for multiple RCS values.
+
+    Parameters
+    __________
+    rcs_values  : list of RCS values [m^2] to plot
+    max_range_km: maximum range on the x_axis [km]
+    (other params same as compute_snr)
+
+    Saves the plot as 'snr_vs_range.png' in the current directory
+    """
+
+    # create an array of 500 range values from 100m to max_range_km
+    ranges_m = np.linspace(100, max_range_km * 1000, 500)
+
+    # create the figure and axes
+    fig, ax = pyplot.subplots(figsize=(10,6))
+
+    # compute snr for each rcs in rcs_values
+    for sigma in rcs_values:
+        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma, ranges_m, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=None)
+        # label = f"= {sigma} m^2"
+        label = f"\u03c3 = {sigma} m\u00b2"
+        ax.plot(ranges_m / 1000, snr, linewidth=2, label=label)
+
+    # drawing the detection threshold
+    ax.axhline(y=SNR_min_dB, color='red', linestyle='--', linewidth=1.5, label=f"Detection Threshold ({SNR_min_dB} dB)")
+
+    # labeling axes
+    ax.set_xlabel("Range [km]", fontsize=12)
+    ax.set_ylabel("SNR [dB]", fontsize=12)
+    ax.set_title("SNR vs. Range - X-band Radar", fontsize=14)
+
+    # Adding the legend and grid
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+
+    # Setting lower limit to -10dB. SNRs at ranges beyond this are unhelpful for this graph
+    ax.set_ylim(bottom=-10.0)
+
+    # Save figure to file
+    pyplot.tight_layout()
+    fig.savefig("snr_vs_range.png", dpi=500, bbox_inches='tight')
+    print("  Saved: snr_vs_range.png")
+    pyplot.close(fig)
 
 #----------------------------------------
 # Main 
@@ -178,6 +228,9 @@ def main():
         print(f"  {r_km:>8} km {loss:>12.3f} dB")
 
     print()
+
+    print("Generating Plot...")
+    plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha, max_range_km=20.0)
 
 
 if __name__ == "__main__":
