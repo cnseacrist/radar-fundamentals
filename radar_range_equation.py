@@ -7,7 +7,7 @@ Author: Charles Seacrist
 """
 
 import numpy as np
-import matplotlib.pyplot as pyplot
+import matplotlib.pyplot as plt
 
 #----------------------------------------
 # Physical Constants
@@ -51,7 +51,8 @@ def atmospheric_loss_dB(range_m, alpha_dB_per_km=0.012):
 #---------------------------------------
 # SNR calculation
 #----------------------------------------
-def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=None):
+def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz,
+                L_sys_dB, alpha_dB_per_km=None):
     """
     Compute single-pule SNR in dB.
 
@@ -105,7 +106,8 @@ def compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, range_m, NF_dB, Bn_Hz, L_sys_dB,
 #----------------------------------------
 # Max Detection Range Finder
 #----------------------------------------  
-def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0, max_search_m=50000, step_m=1.0, alpha_dB_per_km=None):
+def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0,
+                   max_search_m=50000, step_m=1.0, alpha_dB_per_km=None):
     
     """
     Sweep through ranges and find where SNR drops below the detection threshold.
@@ -116,7 +118,8 @@ def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_m
     ranges = np.arange(100, max_search_m, step_m)
 
     for R in ranges:
-        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, R, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=alpha_dB_per_km)
+        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma_m2, R, NF_dB, Bn_Hz, L_sys_dB,
+                          alpha_dB_per_km=alpha_dB_per_km)
         if snr < SNR_min_dB:
             return R - step_m # Return the last range where it was detectable
 
@@ -125,7 +128,8 @@ def find_max_range(Pt_W, G_dBi, freq_Hz, sigma_m2, NF_dB, Bn_Hz, L_sys_dB, SNR_m
 #----------------------------------------
 # Plot
 #----------------------------------------
-def plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0, alpha_dB_per_km=None, max_range_km=20.0):
+def plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB,
+                      SNR_min_dB=13.0, alpha_dB_per_km=None, max_range_km=20.0):
     """
     Plot SNR vs. range for multiple RCS values.
 
@@ -142,17 +146,19 @@ def plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, 
     ranges_m = np.linspace(100, max_range_km * 1000, 500)
 
     # create the figure and axes
-    fig, ax = pyplot.subplots(figsize=(10,6))
+    fig, ax = plt.subplots(figsize=(10,6))
 
     # compute snr for each rcs in rcs_values
     for sigma in rcs_values:
-        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma, ranges_m, NF_dB, Bn_Hz, L_sys_dB, alpha_dB_per_km=None)
+        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma, ranges_m, NF_dB, Bn_Hz,
+                          L_sys_dB, alpha_dB_per_km=None)
         # label = f"= {sigma} m^2"
         label = f"\u03c3 = {sigma} m\u00b2"
         ax.plot(ranges_m / 1000, snr, linewidth=2, label=label)
 
     # drawing the detection threshold
-    ax.axhline(y=SNR_min_dB, color='red', linestyle='--', linewidth=1.5, label=f"Detection Threshold ({SNR_min_dB} dB)")
+    ax.axhline(y=SNR_min_dB, color='red', linestyle='--', linewidth=1.5,
+               label=f"Detection Threshold ({SNR_min_dB} dB)")
 
     # labeling axes
     ax.set_xlabel("Range [km]", fontsize=12)
@@ -167,13 +173,88 @@ def plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, 
     ax.set_ylim(bottom=-10.0)
 
     # Save figure to file
-    pyplot.tight_layout()
+    plt.tight_layout()
     fig.savefig("snr_vs_range.png", dpi=500, bbox_inches='tight')
     print("  Saved: snr_vs_range.png")
-    pyplot.close(fig)
+    plt.close(fig)
+
+def plot_uas_scenario(Pt_W, G_dBi, freq_Hz, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=13.0,
+                      alpha_dB_per_km=0.012, max_range_km=15.0):
+    """
+    C-UAS scenario: compare detection of two common commercial drones.
+
+    Saves the plot as 'cuas_scenario.png' in the current directory.
+    """
+    # Define the two targets
+    # These are approximate X-band RCS values from open literature.
+    targets = { 
+        "DJI Mavic 3  (\u03c3 \u2248 0.01 m\u00b2)": 0.01,
+        "DJI Matrice 300 (\u03c3 \u2248 0.1 m\u00b2)": 0.1,
+    }
+
+    ranges_m = np.linspace(100, max_range_km * 1000, 500)
+
+    # Create a figure with two side-by-side panels
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
+
+    # Left panel: SNR vs Range for each drone ---
+    colors = ['#e74c3c', '#2ecc71']
+
+    for (name, sigma), color in zip(targets.items(), colors):
+        snr = compute_snr(Pt_W, G_dBi, freq_Hz, sigma, ranges_m, NF_dB, Bn_Hz, L_sys_dB,
+                          alpha_dB_per_km=alpha_dB_per_km)
+        ax1.plot(ranges_m / 1000, snr, linewidth=2.5, label=name, color=color)
+
+        # Find and mark the max detection range
+        r_max = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB,
+                               SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha_dB_per_km)
+
+        if r_max > 0:
+            #draw a vertical dotted line at max range
+            ax1.axvline(x=r_max / 1000, color=color, linestyle=':', alpha=0.7, linewidth=1.5)
+
+            # Add a text annotation with an arrow
+            if sigma < 0.05:
+                # Mavic 3 (small RCS) — place label lower-right
+                text_x = r_max / 1000 - 2.0
+                text_y = SNR_min_dB - 8
+            else:
+                # Matrice 300 (larger RCS) — place label upper-right
+                text_x = r_max / 1000
+                text_y = SNR_min_dB + 8
+            ax1.annotate(f"R_max = {r_max/1000:.1f} km",
+                         xy=(r_max / 1000, SNR_min_dB),
+                         xytext=(text_x, text_y),
+                         fontsize=9, color=color,
+                         arrowprops=dict(arrowstyle='->', color=color))
+
+    ax1.axhline(y=SNR_min_dB, color='gray', linestyle='--', linewidth=1.5,
+                label=f"Threshhold ({SNR_min_dB} dB)")
+    ax1.set_xlabel("Range [km]", fontsize=12)
+    ax1.set_ylabel("SNR [dB]", fontsize=12)
+    ax1.set_title("C-UAS Detection: SNR vs. Range", fontsize=13)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_ylim(bottom=-10)
+    
+    # --- Right panel: atmospheric attenuation vs range ---
+    atm_loss_dB = np.array([atmospheric_loss_dB(r, alpha_dB_per_km) for r in ranges_m])
+    ax2.plot(ranges_m / 1000, atm_loss_dB, linewidth=2, color='#3498bd')
+    ax2.set_xlabel("Range [km]", fontsize=12)
+    ax2.set_ylabel("Two-way atmostpheric loss [dB]", fontsize=12)
+    ax2.set_title(f"Atmospheric attenuation (\u03b1 = {alpha_dB_per_km} dB/km)", fontsize=13)
+    ax2.grid(True)
+
+    # Add an overall title and save
+    fig.suptitle("C-UAS Scenario: Generic X-band Radar vs. Small UAS targets", 
+                 fontsize=14, fontweight='bold', y=1.02)
+    plt.tight_layout()
+    fig.savefig("cuas_scenario.png", dpi=150, bbox_inches='tight')
+    print(" Saved: cuas_scenario.png")
+    plt.close(fig)
 
 #----------------------------------------
-# Main 
+# Main
 #----------------------------------------
 def main():
     # === define radar parameters ===
@@ -214,8 +295,10 @@ def main():
     print("-" * 66)
 
     for sigma in rcs_values:
-        r_free = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=None)
-        r_atm = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha)
+        r_free = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB,
+                                SNR_min_dB=SNR_min_dB, alpha_dB_per_km=None)
+        r_atm = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB,
+                               SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha)
         lost = r_free - r_atm
         print(f"  {sigma:>10.3f}    {r_free / 1000:>12.2f} km    {r_atm / 1000:>12.2f} km    {lost:>10.0f} m")
 
@@ -230,7 +313,23 @@ def main():
     print()
 
     print("Generating Plot...")
-    plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha, max_range_km=20.0)
+    plot_snr_vs_range(Pt_W, G_dBi, freq_Hz, rcs_values, NF_dB, Bn_Hz, L_sys_dB, 
+                      SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha, max_range_km=20.0)
+
+    # === C-UAS Scenario ===
+    print("\n" + "=" * 55)
+    print("C-UAS SCENARIO ANALYSIS")
+    print("=" * 55)
+
+    cuas_targets = {"DJI Mavic 3": 0.01, "DJI Matrice 300": 0.1}
+
+    for name, sigma in cuas_targets.items():
+        r_max = find_max_range(Pt_W, G_dBi, freq_Hz, sigma, NF_dB, Bn_Hz, L_sys_dB, 
+                               SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha)
+        print(f"    {name} (\u03c3 \u2248 {sigma} m\u00b2): R_max = {r_max/1000:.2f} km")
+
+    plot_uas_scenario(Pt_W, G_dBi, freq_Hz, NF_dB, Bn_Hz, L_sys_dB,
+                      SNR_min_dB=SNR_min_dB, alpha_dB_per_km=alpha)
 
 
 if __name__ == "__main__":
